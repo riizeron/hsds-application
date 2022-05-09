@@ -1,3 +1,5 @@
+from curses.textpad import Textbox
+from pathlib import Path
 from PyQt5 import QtWidgets, QtCore, QtGui
 from PyQt5.QtCore import Qt
 from PyQt5.QtWidgets import *
@@ -15,23 +17,31 @@ class MainWindow(QMainWindow):
         self.setGeometry(400, 100, 500, 550)
         self.setWindowTitle("HSDS_APP")
 
-
         self.session = Session()
 
         self.centralWidget = QWidget(self)
         self.setCentralWidget(self.centralWidget)
 
-        self.lay = QFormLayout(self.centralWidget)
-        self.centralWidget.setLayout(self.lay)
+        self.form_layout = QFormLayout(self.centralWidget)
+        self.centralWidget.setLayout(self.form_layout)
 
         self.menubar = MenuBar(self)
         self.setMenuBar(self.menubar)
 
-        model = QFileSystemModel()
-        model.setRootPath(QtCore.QDir.currentPath())
+        self.widg = QWidget()
+        self.scrollWidget = QWidget()
+        self.scrollArea = QScrollArea()
+        self.form_layout_label = QFormLayout(self.scrollWidget)
+
+        self.scrollArea.setWidget(self.scrollWidget)
+        self.widg.setLayout(QVBoxLayout())
+        self.widg.layout().addWidget(self.scrollArea)
+        
+        self.scrollArea.setVerticalScrollBarPolicy(Qt.ScrollBarAlwaysOn)
+        self.scrollArea.setWidgetResizable(True)
 
         self.treeView = TreeView(self.centralWidget)
-        self.lay.addWidget(self.treeView)
+        self.form_layout.addRow(self.treeView, self.widg)
 
         self.label_status = QLabel("No connection...", self.statusBar())
         self.label_path = QLabel("", self.statusBar())
@@ -43,6 +53,127 @@ class MainWindow(QMainWindow):
         self.statusBar().addWidget(self.label_path, 2)
         self.statusBar().setStyleSheet("background-color: yellow")
 
+    def tryConnect(self):
+        res, message = self.session.pingServer()
+        if res:
+            self.label_status.setText(f"Connected: {self.session.server_endpoint}")
+            success = QMessageBox()
+            success.setWindowTitle("SUCCESS")
+            success.setText("Connection established!                           ")
+            success.setIcon(QMessageBox.Information)
+            success.setStandardButtons(QMessageBox.Ok)
+            success.setInformativeText(message)
+            success.setDetailedText(self.session.getServerInfo())
+            success.exec_()
+            self.menubar.connection_window.close()
+            self.treeView.refresh()
+        else:
+            error = QMessageBox()
+            error.setWindowTitle("ERROR")
+            error.setText("Connection error!                                    ")
+            error.setIcon(QMessageBox.Critical)
+            error.setStandardButtons(QMessageBox.Ok)
+            error.setInformativeText(message)
+            error.exec_()
+
+        return res
+
+class OpenWindow(QMainWindow):
+    def __init__(self, parent):
+        super(QMainWindow, self).__init__(parent)
+        self.setGeometry(200, 200, 300, 200)
+        self.setWindowTitle('OPEN FILE')
+
+        widget = QWidget()
+        self.vbox = QVBoxLayout()
+        widget.setLayout(self.vbox)
+        self.setCentralWidget(widget)
+
+        label = QLabel('Type file PATH:')
+        self.textBox = QLineEdit()
+        self.submit_btn = QPushButton("&Submit")
+        self.submit_btn.clicked.connect(self.submit)
+        self.cancel_btn = QPushButton("&Cancel")
+        self.cancel_btn.clicked.connect(self.close)
+
+        self.vbox.addWidget(label)
+        self.vbox.addWidget(self.textBox)
+        self.vbox.addWidget(self.submit_btn)
+        self.vbox.addWidget(self.cancel_btn)
+
+    def submit(self):
+        path = self.textBox.text()
+        if path.endswith('/'):
+            error = QMessageBox()
+            error.setWindowTitle("ERROR")
+            error.setText("Incorrect file format")
+            error.setInformativeText("Please, try without '/'")
+            error.setIcon(QMessageBox.Warning)
+            error.setStandardButtons(QMessageBox.Ok)
+            error.exec_()
+        else:
+            try:
+                info_list = self.parent().session.dumpFile(path)
+                for i in reversed(range(self.parent().form_layout_label.count())): 
+                    self.parent().form_layout_label.itemAt(i).widget().deleteLater()
+                for item in info_list:
+                    self.parent().form_layout_label.addRow(QLabel(item[0]), QLabel(item[1]))
+                os.system(f"hsls {path}")
+            except Exception as e:
+                error = QMessageBox()
+                error.setWindowTitle("ERROR")
+                error.setText("File Not Found")
+                error.setInformativeText("Please, check your path or connect to HSDS if you forgot  ")
+                error.setDetailedText(str(e))
+                error.setIcon(QMessageBox.Critical)
+                error.setStandardButtons(QMessageBox.Ok)
+                error.exec_()
+
+class UploadWindow(QMainWindow):
+    def __init__(self, parent):
+        super(QMainWindow, self).__init__(parent)
+        self.setGeometry(200, 200, 300, 200)
+        self.setWindowTitle('UPLOAD FILE')
+
+        widget = QWidget()
+        self.vbox = QVBoxLayout()
+        widget.setLayout(self.vbox)
+        self.setCentralWidget(widget)
+
+        label1 = QLabel('Choose youe file')
+        self.upload_btn = QPushButton("&FILE")
+        self.upload_btn.clicked.connect(self.upload)
+
+        label2 = QLabel('Type destination PATH:')
+        self.textBox = QLineEdit()
+        self.submit_btn = QPushButton("&Submit")
+        self.submit_btn.clicked.connect(self.submit)
+        self.cancel_btn = QPushButton("&Cancel")
+        self.cancel_btn.clicked.connect(self.close)
+
+        self.vbox.addWidget(label1)
+        self.vbox.addWidget(self.upload_btn)
+        self.vbox.addWidget(label2)
+        self.vbox.addWidget(self.textBox)
+        self.vbox.addWidget(self.submit_btn)
+        self.vbox.addWidget(self.cancel_btn)
+
+        self.fileName = None
+
+    def upload(self):
+        options = QFileDialog.Options()
+        options |= QFileDialog.DontUseNativeDialog
+        self.fileName, _ = QFileDialog.getOpenFileName(self,"QFileDialog.getOpenFileName()", "","All Files (*);;Python Files (*.py)", options=options)
+        if self.fileName:
+            print(self.fileName)
+
+    def submit(self):
+        try:
+            os.system(f"hsload -v -u {self.parent().session.username} -p {self.parent().session.password} "+
+            f"-e {self.parent().session.server_endpoint} {self.fileName} {self.textBox.text()}")
+        except Exception as e:
+            print(str(e))
+    
 
 class MenuBar(QMenuBar):
     def __init__(self, parent: MainWindow):
@@ -53,6 +184,7 @@ class MenuBar(QMenuBar):
 
         menuFile = self.addMenu("&File")
         menuFile.addAction('Open', self.open_click)
+        menuFile.addAction('Upload', self.upload_click)
 
         menuEnv = self.addMenu("&Env")
         menuEnv.addAction('Connect', self.connect)
@@ -60,15 +192,31 @@ class MenuBar(QMenuBar):
         menuEnv.addSeparator()
         menuEnv.addAction('Disconnect', self.disconnect)
 
+        menuInfo = self.addAction('Info', self.info)
+
     def open_click(self):
-        return
+        self.open_window = OpenWindow(self.parent)
+        self.open_window.show()
+
+    def upload_click(self):
+        self.upload_window = UploadWindow(self.parent)
+        self.upload_window.show()
+    
+    def info(self):
+        info = QMessageBox()
+        info.setWindowTitle("INFO")
+        info.setText("Server information")
+        info.setIcon(QMessageBox.Information)
+        info.setStandardButtons(QMessageBox.Ok)
+        info.setInformativeText(self.parent.session.getServerInfo())
+        info.exec_()
 
     def connect(self):
-        connection_window = ConnectionWindow(self.parent)
-        connection_window.show()
+        self.connection_window = ConnectionWindow(self.parent)
+        self.connection_window.show()
 
     def restart(self):
-        return
+        self.parent.tryConnect()
 
     def disconnect(self):
         return
@@ -87,7 +235,20 @@ class TreeView(QTreeView):
         self.setModel(self.treeModel)
         self.expandAll()
         self.clicked.connect(self.getPath)
-        # self.doubleClicked.connect()
+        self.doubleClicked.connect(self.fileDump)
+
+    def fileDump(self, item):
+        type = self.treeModel.itemFromIndex(item).type
+        if type == 'domain':
+            file_path = self.treeModel.itemFromIndex(item).path
+            info_list = self.mainWindow.session.dumpFile(file_path)
+
+            for i in reversed(range(self.mainWindow.form_layout_label.count())): 
+                self.mainWindow.form_layout_label.itemAt(i).widget().deleteLater()
+
+            for item in info_list:
+                self.mainWindow.form_layout_label.addRow(QLabel(item[0]), QLabel(item[1]))
+            os.system(f"hsls {file_path}")
 
     def getPath(self, item):
         self.mainWindow.label_path.setText(self.treeModel.itemFromIndex(item).path)
@@ -101,7 +262,7 @@ class TreeView(QTreeView):
         res, domain = self.mainWindow.session.getDomain(path)
         print(domain)
         if res:
-            is_folder = domain.domain.endswith('/')
+            is_folder = str(domain).endswith('/')
             if is_folder:
                 name = domain.domain.split('/')[-2]
                 type = "folder"
@@ -111,9 +272,6 @@ class TreeView(QTreeView):
                 type = "domain"
                 path = domain.filename
 
-            subdomains = domain._getSubdomains()
-            domain.close()
-
             newItem = TreeViewItem(name)
             newItem.setPath(path)
             newItem.setType(type)
@@ -122,10 +280,11 @@ class TreeView(QTreeView):
                 self.treeModel.appendRow(newItem)
             else:
                 parent.appendRow(newItem)
-            for d in subdomains:
+            for d in domain:
                 newPath = str(path) + str(d)
                 if is_folder:
                     self.fillTree(newPath, newItem)
+            domain.close()
 
 
 class TreeViewItem(QStandardItem):
@@ -195,7 +354,7 @@ class ConnectionWindow(QMainWindow):
         horizontalLayout.setContentsMargins(0, 0, 0, 0)
 
         connectButton = QPushButton("&Connect", horizontalLayoutWidget)
-        connectButton.clicked.connect(self.tryConnect)
+        connectButton.clicked.connect(self.connect)
         horizontalLayout.addWidget(connectButton)
 
         cancelButton = QPushButton("&Cancel", horizontalLayoutWidget)
@@ -214,8 +373,12 @@ class ConnectionWindow(QMainWindow):
         self.label_status = QLabel("No connection...", self.statusBar())
         self.statusBar().addWidget(self.label_status)
         self.statusBar().setStyleSheet("background-color: yellow")
+    
+    def connect(self):
+        self.updateData()
+        self.parent.tryConnect()
 
-    def tryConnect(self):
+    def updateData(self):
         self.parent.session.server_endpoint = self.lineEdit_endpoint.text() if len(
             self.lineEdit_endpoint.text()) > 0 else None
         self.parent.session.username = self.lineEdit_username.text() if len(self.lineEdit_username.text()) > 0 else None
@@ -226,28 +389,6 @@ class ConnectionWindow(QMainWindow):
         self.label_username.setText(f'Username [{self.parent.session.username}]:')
         self.label_password.setText(f'Password [{self.parent.session.password}]:')
         self.label_key.setText(f'API Key [{self.parent.session.api_key}]:')
-
-        res, message = self.parent.session.pingServer()
-        if res:
-            self.parent.label_status.setText(f"Connected: {self.parent.session.server_endpoint}")
-            success = QMessageBox()
-            success.setWindowTitle("SUCCESS")
-            success.setText("Connection established!                           ")
-            success.setIcon(QMessageBox.Information)
-            success.setStandardButtons(QMessageBox.Ok)
-            success.setInformativeText(message)
-            success.setDetailedText(self.parent.session.getServerInfo())
-            success.exec_()
-            self.close()
-            self.parent.treeView.refresh()
-        else:
-            error = QMessageBox()
-            error.setWindowTitle("ERROR")
-            error.setText("Connection error!                                    ")
-            error.setIcon(QMessageBox.Critical)
-            error.setStandardButtons(QMessageBox.Ok)
-            error.setInformativeText(message)
-            error.exec_()
 
 
 def application():

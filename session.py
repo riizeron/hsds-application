@@ -1,8 +1,10 @@
 import h5pyd
 import json
 import os
+import os.path as op
 from datetime import datetime
 import logging
+import numpy as np
 
 from h5pyd._apps.hsinfo import getUpTime, getHomeFolder
 
@@ -66,8 +68,7 @@ class Session:
         """ get server state and print """
         message = ""
         try:
-            print(f'username:{self.username},password:{self.password},endpoint:{self.server_endpoint}')
-            info = h5pyd.getServerInfo(username=self.username, password=self.password, endpoint=self.server_endpoint)
+            info = h5pyd.getServerInfo(username=self.username, password=self.password, endpoint=self.server_endpoint, api_key=self.api_key)
             print("server name: {}".format(info["name"]))
             message += "server name: {}".format(info["name"]) + os.linesep
             if "state" in info:
@@ -82,7 +83,6 @@ class Session:
             print("username: {} {}".format(info["username"], admin_tag))
 
             self.username = info["username"]
-            self.password = info["password"]
             
             message += "username: {} {}".format(info["username"], admin_tag) + os.linesep
             print("password: {}".format(info["password"]))
@@ -90,6 +90,7 @@ class Session:
             if info['state'] == "READY":
                 try:
                     home_folder = self.getHomeFolder()
+                    print(home_folder)
                     if home_folder:
                         print("home: {}".format(home_folder))
                         message += "home: {}".format(home_folder) + os.linesep
@@ -153,6 +154,7 @@ class Session:
         dir = self.getFolder('/home/')  # get folder object for root
         
         homefolder = '/'
+        print(dir)
         for name in dir:
         # we should come across the given domain
             if self.username.startswith(name):
@@ -160,7 +162,7 @@ class Session:
                 # e.g. folder: "/home/bob/" for username "bob@acme.com"
                 path = '/home/' + name + '/'
                 try:
-                    f = h5pyd.Folder(path, username=self.username, password=self.password, endpoint=self.server_endpoint)
+                    f = h5pyd.Folder(path, username=self.username, password=self.password, endpoint=self.server_endpoint, api_key=self.api_key)
                 except IOError as ioe:
                     logging.info("find home folder - got ioe: {}".format(ioe))
                     continue
@@ -169,6 +171,7 @@ class Session:
                     continue
                 if f.owner == self.username:
                     homefolder = path
+                # homefolder = path
                 f.close()
                 if homefolder:
                     break
@@ -180,6 +183,7 @@ class Session:
         username = self.username # cfg["hs_username"]
         password = self.password # cfg["hs_password"]
         endpoint = self.server_endpoint # cfg["hs_endpoint"]
+        api_key = self.api_key
         # bucket   = cfg["hs_bucket"]
         # pattern = cfg["pattern"]
         # query = cfg["query"]
@@ -189,18 +193,39 @@ class Session:
         #     verbose = False
         batch_size = 100  # use smaller batchsize for interactively listing of large collections
         d = h5pyd.Folder(domain, endpoint=endpoint, username=username, #verbose=verbose,
-                        password=password)#, bucket=bucket, pattern=pattern, query=query, batch_size=batch_size)
+                        password=password, api_key=api_key)#, bucket=bucket, pattern=pattern, query=query, batch_size=batch_size)
         return d
     
     def getFile(self, domain):
         username = self.username # cfg["hs_username"]
         password = self.password # cfg["hs_password"]
         endpoint = self.server_endpoint # cfg["hs_endpoint"]
+        api_key = self.api_key
         # username = cfg["hs_username"]
         # password = cfg["hs_password"]
         # endpoint = cfg["hs_endpoint"]
         # bucket = cfg["hs_bucket"]
         fh = h5pyd.File(domain, mode='r', endpoint=endpoint, username=username,
-                    password=password, use_cache=True)#, bucket=buket)
+                    password=password, use_cache=True, api_key=api_key)#, bucket=buket)
         return fh
+
+    def dumpFile(self, domain):
+        info = []
+        file = self.getFile(domain)
+        info.append(("Groups:", None))
+        for gr in file:
+            info.append((str(gr), str(file[gr])))
+        info.append((os.linesep, None))
+        info.append(("Attributes:", None))
+        for attr in file.attrs:
+            info.append((attr, str(file.attrs[attr])))
+        file.close()
+        return info
+        
+
+
+            
+            
+
+
 
