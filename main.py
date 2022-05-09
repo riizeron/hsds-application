@@ -57,6 +57,7 @@ class MainWindow(QMainWindow):
         res, message = self.session.pingServer()
         if res:
             self.label_status.setText(f"Connected: {self.session.server_endpoint}")
+            self.menubar.connection_window.label_status.setText(f"Connected: {self.session.server_endpoint}")
             success = QMessageBox()
             success.setWindowTitle("SUCCESS")
             success.setText("Connection established!                           ")
@@ -165,6 +166,7 @@ class UploadWindow(QMainWindow):
         options |= QFileDialog.DontUseNativeDialog
         self.fileName, _ = QFileDialog.getOpenFileName(self,"QFileDialog.getOpenFileName()", "","All Files (*);;Python Files (*.py)", options=options)
         if self.fileName:
+            self.upload_btn.setText(self.fileName)
             print(self.fileName)
 
     def submit(self):
@@ -181,7 +183,7 @@ class MenuBar(QMenuBar):
         self.setGeometry(QtCore.QRect(0, 0, 500, 20))
 
         self.parent = parent
-
+        self.connection_window = None
         menuFile = self.addMenu("&File")
         menuFile.addAction('Open', self.open_click)
         menuFile.addAction('Upload', self.upload_click)
@@ -193,6 +195,8 @@ class MenuBar(QMenuBar):
         menuEnv.addAction('Disconnect', self.disconnect)
 
         menuInfo = self.addAction('Info', self.info)
+
+        menuConsole = self.addAction('Console')
 
     def open_click(self):
         self.open_window = OpenWindow(self.parent)
