@@ -1,10 +1,8 @@
 import h5pyd
 import json
 import os
-import os.path as op
-from datetime import datetime
 import logging
-import numpy as np
+from config import Config
 
 from h5pyd._apps.hsinfo import getUpTime, getHomeFolder
 
@@ -14,23 +12,26 @@ class Session:
         self.server_endpoint = None
         self.username = None
         self.password = None
-        self.api_key = ""
+        self.api_key = None
         self.home_dir = None
+
+        self.getConfig()
  
-    def pingServer(self):
+    def pingServer(self, endpoint, username, password, key):
         message = None
-        if self.server_endpoint is None:
+        if endpoint is None:
             print("empty endpoint")
             message = "empty endpoint!"
             return False, message
-        if not self.server_endpoint.startswith("http"):
+        if not endpoint.startswith("http"):
             print("endpoint must start with 'http...'")
             message = "endpoint must start with 'http...'"
             return False, message
 
         try:
-            info = h5pyd.getServerInfo(username=self.username, password=self.password, endpoint=self.server_endpoint,
-                                       api_key=self.api_key)
+            print(endpoint, username, password, key)
+            info = h5pyd.getServerInfo(username=username, password=password, endpoint=endpoint,
+                                       api_key=key)
             if 'state' not in info:
                 print("unexpected response from server")
                 message = "unexpected response from server"
@@ -63,11 +64,59 @@ class Session:
             return False, message
         message = ""
         return True, message
+    
+    def refresh(self, endpoint, username, password, key):
+        self.server_endpoint = endpoint
+        self.username = username
+        self.password = password
+        self.api_key = key
+        self.saveConfig()
+
+    
+    def getConfig(self):
+        cfg = Config()
+
+        self.server_endpoint = cfg["hs_endpoint"]
+        if not self.server_endpoint:
+            self.server_endpoint = "None"
+        self.username = cfg["hs_username"]
+        if not self.username:
+            self.username = "None"
+        self.password = cfg["hs_password"]
+        if not self.password:
+            self.password = "None"
+        self.api_key = cfg["hs_api_key"]
+        if not self.api_key:
+            self.api_key = "None"
+
+    def saveConfig(self):
+
+        filepath = os.path.expanduser('~/.hscfg')
+        print("Saving config file to: {}".format(filepath))
+        with open(filepath, 'w') as file:
+            file.write("# HDFCloud configuration file\n")
+            if self.server_endpoint:
+                file.write("hs_endpoint = {}\n".format(self.server_endpoint))
+            else:
+                file.write("hs_endpoint = \n")
+            if self.username:
+                file.write("hs_username = {}\n".format(self.username))
+            else:
+                file.write("hs_username = \n")
+            if self.password:
+                file.write("hs_password = {}\n".format(self.password))
+            else:
+                file.write("hs_password = \n")
+            if self.api_key:
+                file.write("hs_api_key = {}\n".format(self.api_key))
+            else:
+                file.write("hs_api_key = \n") 
 
     def getServerInfo(self):
         """ get server state and print """
         message = ""
         try:
+            print(self.server_endpoint, self.username, self.password, self.api_key)
             info = h5pyd.getServerInfo(username=self.username, password=self.password, endpoint=self.server_endpoint, api_key=self.api_key)
             print("server name: {}".format(info["name"]))
             message += "server name: {}".format(info["name"]) + os.linesep
